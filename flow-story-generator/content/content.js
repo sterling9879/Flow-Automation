@@ -645,25 +645,25 @@ async function processPrompt(promptText, isFirst, characterImageData) {
     try {
       sendLog(`Processing prompt (attempt ${attempt}/${retries}): "${promptText.substring(0, 40)}..."`, 'info');
 
-      // Clear current prompt
+      // Step 1: Clear current prompt
       await clearPrompt();
       await sleep(300);
 
-      // Upload character image
-      await uploadCharacterImage(characterImageData);
-      await sleep(500);
+      // Step 2: Write the prompt FIRST (so user can see it)
+      await writePrompt(promptText);
+      await sleep(300);
 
-      // If not first prompt, add the last generated image
+      // Step 3: If not first prompt, add the last generated image as ingredient
       if (!isFirst) {
         await addLastImageToPrompt();
         await sleep(500);
       }
 
-      // Write the prompt
-      await writePrompt(promptText);
-      await sleep(300);
+      // Step 4: Upload character image as ingredient
+      await uploadCharacterImage(characterImageData);
+      await sleep(500);
 
-      // Click create
+      // Step 5: Click create to generate
       await clickCreate();
 
       // Wait for generation
