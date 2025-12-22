@@ -349,6 +349,12 @@ textarea:focus {
   color: #808080;
 }
 
+.log-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* Settings */
 .settings {
   border: 1px solid var(--border-color);

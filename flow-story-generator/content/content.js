@@ -3,17 +3,47 @@
  * Handles page automation and interaction with Google Flow
  */
 
-// Selectors based on documentation
+// Selectors based on documentation - with multiple fallbacks
 const SELECTORS = {
   promptTextarea: 'textarea#PINHOLE_TEXT_AREA_ELEMENT_ID',
   createButton: 'button[aria-label="Create"]',
   addToPromptButton: 'button[aria-label*="Add To Prompt"]',
   removeFromPromptButton: 'button[aria-label="Remove From Prompt"]',
-  addIngredientButton: 'button[aria-label="add"]',
-  fileInput: 'input[type="file"]',
+  // Multiple selectors for add ingredient button
+  addIngredientButton: [
+    'button[aria-label="add"]',
+    'button[aria-label="Add"]',
+    'button[aria-label*="add ingredient"]',
+    'button[aria-label*="Add ingredient"]',
+    'button[aria-label*="Add Ingredient"]',
+    'button[aria-label="add image"]',
+    'button[aria-label*="upload"]',
+    'button[aria-label*="Upload"]',
+    // SVG plus icon buttons
+    'button svg[data-icon="plus"]',
+    'button:has(svg path[d*="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"])',
+    // Generic plus buttons near prompt area
+    '[class*="ingredient"] button',
+    '[class*="add"] button:not([aria-label="Create"])'
+  ],
+  fileInput: [
+    'input[type="file"]',
+    'input[type="file"][accept*="image"]',
+    'input[accept=".png,.jpg,.jpeg,.webp,.heic,.avif"]'
+  ],
   generatedImages: 'img[alt*="Flow Image"]',
-  closeModalButton: 'button[aria-label="close"]',
-  uploadButton: 'button[aria-label*="Upload"]'
+  closeModalButton: [
+    'button[aria-label="close"]',
+    'button[aria-label="Close"]',
+    'button[aria-label*="close"]',
+    '[role="dialog"] button[aria-label*="close"]',
+    '[role="dialog"] button:first-child'
+  ],
+  uploadButton: [
+    'button[aria-label*="Upload"]',
+    'button[aria-label*="upload"]',
+    'button:contains("Upload")'
+  ]
 };
 
 // State management
@@ -129,6 +159,97 @@ function sleep(ms) {
 }
 
 /**
+ * Try multiple selectors and return first matching element
+ * @param {string|string[]} selectors - Single selector or array of selectors
+ * @returns {Element|null}
+ */
+function findElementBySelectors(selectors) {
+  const selectorList = Array.isArray(selectors) ? selectors : [selectors];
+
+  for (const selector of selectorList) {
+    try {
+      const element = document.querySelector(selector);
+      if (element) {
+        console.log(`[Flow Story Generator] Found element with selector: ${selector}`);
+        return element;
+      }
+    } catch (e) {
+      // Invalid selector, skip
+      console.log(`[Flow Story Generator] Invalid selector: ${selector}`);
+    }
+  }
+  return null;
+}
+
+/**
+ * Wait for any of multiple selectors to appear
+ * @param {string|string[]} selectors - Single selector or array of selectors
+ * @param {number} timeout - Maximum wait time in ms
+ * @returns {Promise<Element|null>}
+ */
+async function waitForAnyElement(selectors, timeout = 30000) {
+  const selectorList = Array.isArray(selectors) ? selectors : [selectors];
+  const startTime = Date.now();
+
+  return new Promise((resolve) => {
+    // Check if any element already exists
+    const existing = findElementBySelectors(selectorList);
+    if (existing) {
+      resolve(existing);
+      return;
+    }
+
+    // Set up observer
+    const observer = new MutationObserver(() => {
+      const element = findElementBySelectors(selectorList);
+      if (element) {
+        observer.disconnect();
+        resolve(element);
+      }
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true
+    });
+
+    // Timeout check with polling
+    const checkInterval = setInterval(() => {
+      const element = findElementBySelectors(selectorList);
+      if (element) {
+        observer.disconnect();
+        clearInterval(checkInterval);
+        resolve(element);
+        return;
+      }
+
+      if (Date.now() - startTime > timeout) {
+        observer.disconnect();
+        clearInterval(checkInterval);
+        resolve(null);
+      }
+    }, 200);
+  });
+}
+
+/**
+ * Log all buttons on page for debugging
+ */
+function debugLogButtons() {
+  const buttons = document.querySelectorAll('button');
+  console.log(`[Flow Story Generator] Found ${buttons.length} buttons on page:`);
+  buttons.forEach((btn, i) => {
+    const ariaLabel = btn.getAttribute('aria-label');
+    const text = btn.textContent?.trim().substring(0, 50);
+    const classes = btn.className;
+    if (ariaLabel || text) {
+      console.log(`  ${i}: aria-label="${ariaLabel}" text="${text}" class="${classes}"`);
+    }
+  });
+}
+
+/**
  * Write text to the prompt textarea
  * @param {string} text - Text to write
  */
@@ -177,21 +298,77 @@ async function clearPrompt() {
 async function uploadCharacterImage(imageData) {
   sendLog('Uploading character image...', 'info');
 
-  // Click the add ingredient button to open modal
-  const addButton = await waitForElement(SELECTORS.addIngredientButton);
+  // Debug: log available buttons
+  debugLogButtons();
+
+  // Method 1: Try to find and click the add ingredient button
+  let addButton = await waitForAnyElement(SELECTORS.addIngredientButton, 5000);
+
+  // Method 2: If not found, look for any button with a plus icon near the prompt area
   if (!addButton) {
-    throw new Error('Add ingredient button not found');
+    sendLog('Add button not found with standard selectors, trying alternative methods...', 'warning');
+
+    // Look for buttons with SVG plus icons
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+      const svg = btn.querySelector('svg');
+      if (svg) {
+        const paths = svg.querySelectorAll('path');
+        for (const path of paths) {
+          const d = path.getAttribute('d');
+          // Common plus icon path patterns
+          if (d && (d.includes('M19 13') || d.includes('M12 5') || d.includes('add') || d.includes('plus'))) {
+            addButton = btn;
+            sendLog('Found add button via SVG path analysis', 'info');
+            break;
+          }
+        }
+      }
+      if (addButton) break;
+
+      // Also check for text content
+      const text = btn.textContent?.toLowerCase() || '';
+      const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase() || '';
+      if ((text.includes('+') || ariaLabel.includes('add') || ariaLabel.includes('ingredient')) &&
+          !ariaLabel.includes('prompt')) {
+        addButton = btn;
+        sendLog(`Found add button via text/aria: "${ariaLabel || text}"`, 'info');
+        break;
+      }
+    }
   }
 
-  addButton.click();
-  await sleep(500);
+  // Method 3: Try to find file input directly (might be already visible)
+  let fileInput = findElementBySelectors(SELECTORS.fileInput);
 
-  // Find the file input
-  const fileInput = await waitForElement(SELECTORS.fileInput, 5000);
+  if (!addButton && !fileInput) {
+    // Last resort: look for any hidden file input and try to use it directly
+    const hiddenInputs = document.querySelectorAll('input[type="file"]');
+    if (hiddenInputs.length > 0) {
+      fileInput = hiddenInputs[0];
+      sendLog('Found hidden file input directly', 'info');
+    }
+  }
+
+  // If we found an add button, click it
+  if (addButton && !fileInput) {
+    sendLog('Clicking add ingredient button...', 'info');
+    addButton.click();
+    await sleep(800);
+
+    // Now look for the file input in the modal
+    fileInput = await waitForAnyElement(SELECTORS.fileInput, 5000);
+  }
+
   if (!fileInput) {
-    // Try to close modal and throw error
+    // Final attempt: look for any file input again after potential modal opened
+    await sleep(500);
+    fileInput = findElementBySelectors(SELECTORS.fileInput);
+  }
+
+  if (!fileInput) {
     await closeModal();
-    throw new Error('File input not found');
+    throw new Error('File input not found. Please check browser console for available buttons.');
   }
 
   // Convert base64 to File object
@@ -204,11 +381,22 @@ async function uploadCharacterImage(imageData) {
   dataTransfer.items.add(file);
   fileInput.files = dataTransfer.files;
 
-  // Dispatch change event
+  // Dispatch multiple events to ensure React picks it up
+  fileInput.dispatchEvent(new Event('input', { bubbles: true }));
   fileInput.dispatchEvent(new Event('change', { bubbles: true }));
 
+  // Also try native input event
+  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'files')?.set;
+  if (nativeInputValueSetter) {
+    nativeInputValueSetter.call(fileInput, dataTransfer.files);
+    fileInput.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    fileInput.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+  }
+
+  sendLog('File input populated, waiting for upload...', 'info');
+
   // Wait for upload to complete
-  await sleep(1500);
+  await sleep(2000);
 
   // Close modal if still open
   await closeModal();
@@ -220,19 +408,30 @@ async function uploadCharacterImage(imageData) {
  * Close any open modal
  */
 async function closeModal() {
-  const closeButton = document.querySelector(SELECTORS.closeModalButton);
+  // Try multiple close button selectors
+  const closeButton = findElementBySelectors(SELECTORS.closeModalButton);
   if (closeButton) {
     closeButton.click();
     await sleep(300);
-  } else {
-    // Try pressing Escape
-    document.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'Escape',
-      code: 'Escape',
-      bubbles: true
-    }));
+    return;
+  }
+
+  // Try clicking outside modal (backdrop)
+  const backdrop = document.querySelector('[role="dialog"]')?.parentElement;
+  if (backdrop) {
+    backdrop.click();
     await sleep(300);
   }
+
+  // Try pressing Escape
+  document.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Escape',
+    code: 'Escape',
+    keyCode: 27,
+    which: 27,
+    bubbles: true
+  }));
+  await sleep(300);
 }
 
 /**
@@ -516,6 +715,65 @@ function sendError(error, fatal = false) {
 }
 
 /**
+ * Scan page and return information about available elements
+ */
+function scanPage() {
+  const results = {
+    buttons: [],
+    inputs: [],
+    textareas: [],
+    images: []
+  };
+
+  // Scan buttons
+  document.querySelectorAll('button').forEach((btn, i) => {
+    const ariaLabel = btn.getAttribute('aria-label');
+    const text = btn.textContent?.trim().substring(0, 50);
+    const hasSvg = btn.querySelector('svg') !== null;
+    if (ariaLabel || text) {
+      results.buttons.push({
+        index: i,
+        ariaLabel,
+        text,
+        hasSvg,
+        visible: btn.offsetParent !== null
+      });
+    }
+  });
+
+  // Scan file inputs
+  document.querySelectorAll('input[type="file"]').forEach((input, i) => {
+    results.inputs.push({
+      index: i,
+      accept: input.accept,
+      visible: input.offsetParent !== null,
+      className: input.className
+    });
+  });
+
+  // Scan textareas
+  document.querySelectorAll('textarea').forEach((ta, i) => {
+    results.textareas.push({
+      index: i,
+      id: ta.id,
+      placeholder: ta.placeholder?.substring(0, 50),
+      visible: ta.offsetParent !== null
+    });
+  });
+
+  // Scan generated images
+  document.querySelectorAll('img[alt*="Flow"]').forEach((img, i) => {
+    results.images.push({
+      index: i,
+      alt: img.alt?.substring(0, 50),
+      hasSource: !!img.src
+    });
+  });
+
+  return results;
+}
+
+/**
  * Message listener for commands from popup
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -553,6 +811,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'GET_ALL_IMAGES':
       const images = extractAllImages();
       sendResponse({ images });
+      break;
+
+    case 'SCAN_PAGE':
+      const scanResults = scanPage();
+      sendLog(`Found: ${scanResults.buttons.length} buttons, ${scanResults.inputs.length} file inputs, ${scanResults.textareas.length} textareas`, 'info');
+
+      // Log buttons with relevant aria-labels
+      const relevantButtons = scanResults.buttons.filter(b =>
+        b.ariaLabel && (
+          b.ariaLabel.toLowerCase().includes('add') ||
+          b.ariaLabel.toLowerCase().includes('create') ||
+          b.ariaLabel.toLowerCase().includes('upload') ||
+          b.ariaLabel.toLowerCase().includes('close')
+        )
+      );
+      relevantButtons.forEach(b => {
+        sendLog(`Button: "${b.ariaLabel}" (visible: ${b.visible}, hasSvg: ${b.hasSvg})`, 'debug');
+      });
+
+      sendResponse({ results: scanResults });
       break;
 
     case 'PING':
