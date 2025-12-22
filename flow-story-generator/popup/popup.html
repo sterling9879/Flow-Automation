@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flow Story Generator</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Flow Story Generator</h1>
+      <p class="subtitle">Automate sequential image generation</p>
+    </header>
+
+    <!-- Status Bar -->
+    <div id="status-bar" class="status-bar">
+      <span id="status-text">Ready</span>
+      <span id="connection-status" class="connection-indicator disconnected"></span>
+    </div>
+
+    <!-- Character Image Upload -->
+    <section class="section">
+      <h2>Character Image (Base Reference)</h2>
+      <div class="upload-area" id="character-upload-area">
+        <input type="file" id="character-image" accept=".png,.jpg,.jpeg,.webp" hidden>
+        <div id="upload-preview" class="upload-preview">
+          <span class="upload-icon">+</span>
+          <span class="upload-text">Click or drag to upload</span>
+        </div>
+        <img id="character-preview" class="character-preview" hidden>
+        <button id="remove-character" class="btn-remove" hidden>Remove</button>
+      </div>
+    </section>
+
+    <!-- Prompts Input -->
+    <section class="section">
+      <h2>Prompts (one per line)</h2>
+      <textarea
+        id="prompts-input"
+        placeholder="Enter your prompts here, one per line...&#10;&#10;Example:&#10;A wizard standing in a magical forest&#10;The wizard casting a spell&#10;The wizard battling a dragon..."
+        rows="8"
+      ></textarea>
+      <div class="prompt-count">
+        <span id="prompt-count">0</span> prompts loaded
+      </div>
+    </section>
+
+    <!-- Progress Section -->
+    <section class="section" id="progress-section" hidden>
+      <h2>Progress</h2>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-text">
+        <span>Processing: </span>
+        <span id="progress-current">0</span>/<span id="progress-total">0</span>
+      </div>
+      <div class="current-prompt" id="current-prompt"></div>
+    </section>
+
+    <!-- Control Buttons -->
+    <section class="section controls">
+      <button id="btn-start" class="btn btn-primary">
+        <span class="btn-icon">&#9658;</span> Start Generation
+      </button>
+      <button id="btn-pause" class="btn btn-warning" hidden>
+        <span class="btn-icon">&#10074;&#10074;</span> Pause
+      </button>
+      <button id="btn-resume" class="btn btn-success" hidden>
+        <span class="btn-icon">&#9658;</span> Resume
+      </button>
+      <button id="btn-stop" class="btn btn-danger" hidden>
+        <span class="btn-icon">&#9632;</span> Stop
+      </button>
+    </section>
+
+    <!-- Download Section -->
+    <section class="section">
+      <button id="btn-download" class="btn btn-secondary">
+        <span class="btn-icon">&#8595;</span> Download All Images
+      </button>
+      <div class="download-options" id="download-options" hidden>
+        <label>
+          <input type="text" id="filename-prefix" value="story" placeholder="Filename prefix">
+        </label>
+      </div>
+    </section>
+
+    <!-- Activity Log -->
+    <section class="section">
+      <h2>Activity Log</h2>
+      <div class="log-container" id="log-container">
+        <div class="log-entry info">Extension loaded. Waiting for commands...</div>
+      </div>
+      <button id="btn-clear-log" class="btn btn-small">Clear Log</button>
+    </section>
+
+    <!-- Settings -->
+    <details class="section settings">
+      <summary>Advanced Settings</summary>
+      <div class="settings-content">
+        <label>
+          <span>Generation timeout (seconds):</span>
+          <input type="number" id="setting-timeout" value="60" min="30" max="180">
+        </label>
+        <label>
+          <span>Delay between prompts (ms):</span>
+          <input type="number" id="setting-delay" value="2000" min="500" max="10000">
+        </label>
+        <label>
+          <span>Max retries on error:</span>
+          <input type="number" id="setting-retries" value="3" min="1" max="5">
+        </label>
+        <label>
+          <span>Download delay (ms):</span>
+          <input type="number" id="setting-download-delay" value="500" min="200" max="2000">
+        </label>
+      </div>
+    </details>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
