@@ -253,6 +253,7 @@ function debugLogButtons() {
 
 /**
  * Write text to the prompt textarea
+ * Uses React-compatible method to update the value
  * @param {string} text - Text to write
  */
 async function writePrompt(text) {
@@ -261,34 +262,93 @@ async function writePrompt(text) {
     throw new Error('Prompt textarea not found');
   }
 
-  // Clear existing content
-  textarea.value = '';
-  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  // Focus the textarea first
+  textarea.focus();
   await sleep(100);
 
-  // Write new content
-  textarea.value = text;
-  textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  textarea.dispatchEvent(new Event('change', { bubbles: true }));
+  // Method 1: Use native value setter to bypass React's controlled input
+  // This is the key trick for React inputs!
+  const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLTextAreaElement.prototype,
+    'value'
+  )?.set;
 
-  // Focus and trigger any React handlers
+  if (nativeTextAreaValueSetter) {
+    // Clear first
+    nativeTextAreaValueSetter.call(textarea, '');
+    textarea.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    await sleep(50);
+
+    // Set new value
+    nativeTextAreaValueSetter.call(textarea, text);
+  } else {
+    // Fallback: direct assignment
+    textarea.value = text;
+  }
+
+  // Dispatch events that React listens to
+  // InputEvent is more reliable than Event for React
+  const inputEvent = new InputEvent('input', {
+    bubbles: true,
+    cancelable: true,
+    inputType: 'insertText',
+    data: text,
+    composed: true
+  });
+  textarea.dispatchEvent(inputEvent);
+
+  // Also dispatch change event
+  textarea.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+
+  // Trigger React's synthetic event handlers
+  textarea.dispatchEvent(new Event('blur', { bubbles: true }));
   textarea.focus();
-  textarea.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-  textarea.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+
+  // Additional: simulate keyboard events for any keyup/keydown listeners
+  textarea.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }));
+  textarea.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
 
   await sleep(200);
+
+  // Verify the value was set
+  if (textarea.value !== text) {
+    sendLog(`Warning: textarea value mismatch. Expected length ${text.length}, got ${textarea.value.length}`, 'warning');
+    // Try one more time with direct assignment
+    textarea.value = text;
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   sendLog(`Prompt written: "${text.substring(0, 50)}..."`, 'info');
 }
 
 /**
  * Clear the prompt textarea
+ * Uses React-compatible method
  */
 async function clearPrompt() {
   const textarea = await waitForElement(SELECTORS.promptTextarea);
   if (textarea) {
-    textarea.value = '';
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    textarea.focus();
+
+    // Use native setter for React compatibility
+    const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype,
+      'value'
+    )?.set;
+
+    if (nativeTextAreaValueSetter) {
+      nativeTextAreaValueSetter.call(textarea, '');
+    } else {
+      textarea.value = '';
+    }
+
+    textarea.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'deleteContentBackward',
+      composed: true
+    }));
+    textarea.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
     await sleep(100);
   }
 }
