@@ -10,21 +10,18 @@ const SELECTORS = {
   addToPromptButton: 'button[aria-label*="Add To Prompt"]',
   removeFromPromptButton: 'button[aria-label="Remove From Prompt"]',
   // Multiple selectors for add ingredient button
+  // NOTE: These buttons use Google Symbols icons, not aria-labels!
   addIngredientButton: [
+    // Primary: button with <i> containing "add" text (Google Symbols icon)
+    'button:has(i.google-symbols)',
+    'button.sc-c177465c-1',  // Specific class from actual page
+    'button.sc-d02e9a37-1',  // Alternative class
+    // Fallback aria-label selectors (in case they add them later)
     'button[aria-label="add"]',
     'button[aria-label="Add"]',
     'button[aria-label*="add ingredient"]',
-    'button[aria-label*="Add ingredient"]',
-    'button[aria-label*="Add Ingredient"]',
-    'button[aria-label="add image"]',
     'button[aria-label*="upload"]',
-    'button[aria-label*="Upload"]',
-    // SVG plus icon buttons
-    'button svg[data-icon="plus"]',
-    'button:has(svg path[d*="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"])',
-    // Generic plus buttons near prompt area
-    '[class*="ingredient"] button',
-    '[class*="add"] button:not([aria-label="Create"])'
+    'button[aria-label*="Upload"]'
   ],
   fileInput: [
     'input[type="file"].sc-8770743f-0',  // Specific class from docs
@@ -43,9 +40,11 @@ const SELECTORS = {
     '[role="dialog"] button:first-child'
   ],
   uploadButton: [
+    // Primary: button with "upload" icon and "Upload" text
+    'button.sc-fbea20b2-0',  // Specific class from actual page
+    'button:has(i.google-symbols)',
     'button[aria-label*="Upload"]',
-    'button[aria-label*="upload"]',
-    'button:contains("Upload")'
+    'button[aria-label*="upload"]'
   ]
 };
 
@@ -307,36 +306,33 @@ async function uploadCharacterImage(imageData) {
   // Method 1: Try to find and click the add ingredient button
   let addButton = await waitForAnyElement(SELECTORS.addIngredientButton, 5000);
 
-  // Method 2: If not found, look for any button with a plus icon near the prompt area
+  // Method 2: If not found, look for buttons with Google Symbols icons
   if (!addButton) {
-    sendLog('Add button not found with standard selectors, trying alternative methods...', 'warning');
+    sendLog('Add button not found with standard selectors, trying icon text detection...', 'warning');
 
-    // Look for buttons with SVG plus icons
+    // Look for buttons with Google Symbols icons containing "add"
     const allButtons = document.querySelectorAll('button');
     for (const btn of allButtons) {
-      const svg = btn.querySelector('svg');
-      if (svg) {
-        const paths = svg.querySelectorAll('path');
-        for (const path of paths) {
-          const d = path.getAttribute('d');
-          // Common plus icon path patterns
-          if (d && (d.includes('M19 13') || d.includes('M12 5') || d.includes('add') || d.includes('plus'))) {
-            addButton = btn;
-            sendLog('Found add button via SVG path analysis', 'info');
-            break;
-          }
+      // Check for <i> elements with google-symbols class containing "add" text
+      const iconElement = btn.querySelector('i.google-symbols, i[class*="google-symbols"]');
+      if (iconElement) {
+        const iconText = iconElement.textContent?.trim().toLowerCase() || '';
+        if (iconText === 'add' || iconText === 'add_circle' || iconText === 'add_box') {
+          addButton = btn;
+          sendLog(`Found add button via Google Symbols icon: "${iconText}"`, 'info');
+          break;
         }
       }
-      if (addButton) break;
 
-      // Also check for text content
-      const text = btn.textContent?.toLowerCase() || '';
-      const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase() || '';
-      if ((text.includes('+') || ariaLabel.includes('add') || ariaLabel.includes('ingredient')) &&
-          !ariaLabel.includes('prompt')) {
-        addButton = btn;
-        sendLog(`Found add button via text/aria: "${ariaLabel || text}"`, 'info');
-        break;
+      // Also check for any <i> element with "add" text
+      const anyIcon = btn.querySelector('i');
+      if (anyIcon) {
+        const iconText = anyIcon.textContent?.trim().toLowerCase() || '';
+        if (iconText === 'add') {
+          addButton = btn;
+          sendLog(`Found add button via icon text: "${iconText}"`, 'info');
+          break;
+        }
       }
     }
   }
@@ -733,11 +729,18 @@ function scanPage() {
     const ariaLabel = btn.getAttribute('aria-label');
     const text = btn.textContent?.trim().substring(0, 50);
     const hasSvg = btn.querySelector('svg') !== null;
-    if (ariaLabel || text) {
+    // Check for Google Symbols icons
+    const iconElement = btn.querySelector('i.google-symbols, i[class*="google-symbols"], i');
+    const iconText = iconElement?.textContent?.trim() || null;
+    const className = btn.className?.substring(0, 50) || '';
+
+    if (ariaLabel || text || iconText) {
       results.buttons.push({
         index: i,
         ariaLabel,
         text,
+        iconText,
+        className,
         hasSvg,
         visible: btn.offsetParent !== null
       });
@@ -820,17 +823,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const scanResults = scanPage();
       sendLog(`Found: ${scanResults.buttons.length} buttons, ${scanResults.inputs.length} file inputs, ${scanResults.textareas.length} textareas`, 'info');
 
-      // Log buttons with relevant aria-labels
-      const relevantButtons = scanResults.buttons.filter(b =>
-        b.ariaLabel && (
-          b.ariaLabel.toLowerCase().includes('add') ||
-          b.ariaLabel.toLowerCase().includes('create') ||
-          b.ariaLabel.toLowerCase().includes('upload') ||
-          b.ariaLabel.toLowerCase().includes('close')
-        )
-      );
+      // Log buttons with relevant aria-labels OR icon text
+      const relevantButtons = scanResults.buttons.filter(b => {
+        const label = (b.ariaLabel || '').toLowerCase();
+        const icon = (b.iconText || '').toLowerCase();
+        return (
+          label.includes('add') || label.includes('create') ||
+          label.includes('upload') || label.includes('close') ||
+          icon === 'add' || icon === 'upload' || icon === 'close'
+        );
+      });
       relevantButtons.forEach(b => {
-        sendLog(`Button: "${b.ariaLabel}" (visible: ${b.visible}, hasSvg: ${b.hasSvg})`, 'debug');
+        const identifier = b.ariaLabel || `icon:${b.iconText}` || b.text?.substring(0, 20);
+        sendLog(`Button: "${identifier}" class="${b.className}" (visible: ${b.visible})`, 'debug');
       });
 
       sendResponse({ results: scanResults });
