@@ -27,11 +27,14 @@ const SELECTORS = {
     '[class*="add"] button:not([aria-label="Create"])'
   ],
   fileInput: [
+    'input[type="file"].sc-8770743f-0',  // Specific class from docs
+    'input[type="file"].sc-8770743f-0.kyRuKy',  // Full class from docs
     'input[type="file"]',
     'input[type="file"][accept*="image"]',
     'input[accept=".png,.jpg,.jpeg,.webp,.heic,.avif"]'
   ],
   generatedImages: 'img[alt*="Flow Image"]',
+  imageCard: '.sc-6349d8ef-0',  // Container principal do card from docs
   closeModalButton: [
     'button[aria-label="close"]',
     'button[aria-label="Close"]',
