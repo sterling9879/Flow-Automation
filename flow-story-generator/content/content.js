@@ -659,9 +659,13 @@ async function processPrompt(promptText, isFirst, characterImageData) {
         await sleep(500);
       }
 
-      // Step 4: Upload character image as ingredient
-      await uploadCharacterImage(characterImageData);
-      await sleep(500);
+      // Step 4: Upload character image as ingredient (OPTIONAL)
+      if (characterImageData) {
+        await uploadCharacterImage(characterImageData);
+        await sleep(500);
+      } else {
+        sendLog('No character image - sending prompt only', 'info');
+      }
 
       // Step 5: Click create to generate
       await clickCreate();

@@ -208,12 +208,7 @@ function updatePromptCount() {
  * Start the generation process
  */
 async function startGeneration() {
-  // Validate inputs
-  if (!state.characterImageData) {
-    log('Please upload a character image first', 'error');
-    return;
-  }
-
+  // Validate inputs - character image is now OPTIONAL
   const prompts = elements.promptsInput.value.trim().split('\n').filter(p => p.trim());
   if (prompts.length === 0) {
     log('Please enter at least one prompt', 'error');
