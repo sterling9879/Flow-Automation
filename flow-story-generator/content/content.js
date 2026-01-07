@@ -6,7 +6,16 @@
 // Selectors based on documentation - with multiple fallbacks
 const SELECTORS = {
   promptTextarea: 'textarea#PINHOLE_TEXT_AREA_ELEMENT_ID',
-  createButton: 'button[aria-label="Create"]',
+  // Multiple selectors for Create button
+  createButton: [
+    'button[aria-label="Create"]',
+    'button[aria-label="create"]',
+    'button[aria-label*="Create"]',
+    'button[aria-label*="Generate"]',
+    'button[aria-label*="Send"]',
+    // Class-based selectors
+    'button.sc-6d4d80ed-12'  // Class from documentation
+  ],
   addToPromptButton: 'button[aria-label*="Add To Prompt"]',
   removeFromPromptButton: 'button[aria-label="Remove From Prompt"]',
   // Multiple selectors for add ingredient button
@@ -543,7 +552,53 @@ async function addLastImageToPrompt() {
  * Click the Create button to start generation
  */
 async function clickCreate() {
-  const createButton = await waitForElement(SELECTORS.createButton);
+  // Method 1: Try standard selectors
+  let createButton = await waitForAnyElement(SELECTORS.createButton, 3000);
+
+  // Method 2: Look for buttons with Google Symbols icons (arrow_forward, send, etc.)
+  if (!createButton) {
+    sendLog('Create button not found with standard selectors, trying icon detection...', 'warning');
+
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+      const iconElement = btn.querySelector('i.google-symbols, i[class*="google-symbols"], i');
+      if (iconElement) {
+        const iconText = iconElement.textContent?.trim().toLowerCase() || '';
+        // Common icons for submit/create buttons
+        if (iconText === 'arrow_forward' || iconText === 'send' || iconText === 'check' ||
+            iconText === 'done' || iconText === 'play_arrow' || iconText === 'create') {
+          createButton = btn;
+          sendLog(`Found create button via icon: "${iconText}"`, 'info');
+          break;
+        }
+      }
+
+      // Also check button text
+      const btnText = btn.textContent?.trim().toLowerCase() || '';
+      if (btnText === 'create' || btnText === 'generate' || btnText === 'send') {
+        createButton = btn;
+        sendLog(`Found create button via text: "${btnText}"`, 'info');
+        break;
+      }
+    }
+  }
+
+  // Method 3: Look for button near the textarea (usually the submit is next to input)
+  if (!createButton) {
+    const textarea = document.querySelector(SELECTORS.promptTextarea);
+    if (textarea) {
+      // Look for button in same parent container
+      const container = textarea.closest('form') || textarea.parentElement?.parentElement;
+      if (container) {
+        const nearbyButton = container.querySelector('button:not([aria-label*="add"])');
+        if (nearbyButton) {
+          createButton = nearbyButton;
+          sendLog('Found create button near textarea', 'info');
+        }
+      }
+    }
+  }
+
   if (!createButton) {
     throw new Error('Create button not found');
   }
