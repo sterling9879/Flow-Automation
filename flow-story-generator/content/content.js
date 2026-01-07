@@ -7,13 +7,12 @@
 const SELECTORS = {
   promptTextarea: 'textarea#PINHOLE_TEXT_AREA_ELEMENT_ID',
   // Multiple selectors for Create button
+  // NOTE: Create button has icon "arrow_forward" and hidden span with "Create" text
   createButton: [
     'button[aria-label="Create"]',
     'button[aria-label="create"]',
     'button[aria-label*="Create"]',
-    'button[aria-label*="Generate"]',
-    'button[aria-label*="Send"]',
-    // Class-based selectors
+    'button.sc-408537d4-2',  // Specific class from actual Create button
     'button.sc-6d4d80ed-12'  // Class from documentation
   ],
   addToPromptButton: 'button[aria-label*="Add To Prompt"]',
@@ -552,55 +551,60 @@ async function addLastImageToPrompt() {
  * Click the Create button to start generation
  */
 async function clickCreate() {
-  // Method 1: Try standard selectors
-  let createButton = await waitForAnyElement(SELECTORS.createButton, 3000);
+  // Method 1: Try standard selectors first
+  let createButton = await waitForAnyElement(SELECTORS.createButton, 2000);
 
-  // Method 2: Look for buttons with Google Symbols icons (arrow_forward, send, etc.)
+  // Method 2: Look for button with arrow_forward icon (primary method for Google Flow)
   if (!createButton) {
-    sendLog('Create button not found with standard selectors, trying icon detection...', 'warning');
+    sendLog('Trying icon detection for Create button...', 'info');
 
     const allButtons = document.querySelectorAll('button');
     for (const btn of allButtons) {
       const iconElement = btn.querySelector('i.google-symbols, i[class*="google-symbols"], i');
       if (iconElement) {
         const iconText = iconElement.textContent?.trim().toLowerCase() || '';
-        // Common icons for submit/create buttons
-        if (iconText === 'arrow_forward' || iconText === 'send' || iconText === 'check' ||
-            iconText === 'done' || iconText === 'play_arrow' || iconText === 'create') {
+        // arrow_forward is the actual icon used by Create button
+        if (iconText === 'arrow_forward') {
           createButton = btn;
-          sendLog(`Found create button via icon: "${iconText}"`, 'info');
+          sendLog(`Found Create button via arrow_forward icon`, 'info');
           break;
         }
       }
+    }
+  }
 
-      // Also check button text
-      const btnText = btn.textContent?.trim().toLowerCase() || '';
-      if (btnText === 'create' || btnText === 'generate' || btnText === 'send') {
+  // Method 3: Look for button containing hidden "Create" text
+  if (!createButton) {
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+      // Check for hidden span with "Create" text
+      const hiddenSpan = btn.querySelector('span');
+      if (hiddenSpan && hiddenSpan.textContent?.trim().toLowerCase() === 'create') {
         createButton = btn;
-        sendLog(`Found create button via text: "${btnText}"`, 'info');
+        sendLog('Found Create button via hidden span text', 'info');
         break;
       }
     }
   }
 
-  // Method 3: Look for button near the textarea (usually the submit is next to input)
+  // Method 4: Other common icons for submit buttons
   if (!createButton) {
-    const textarea = document.querySelector(SELECTORS.promptTextarea);
-    if (textarea) {
-      // Look for button in same parent container
-      const container = textarea.closest('form') || textarea.parentElement?.parentElement;
-      if (container) {
-        const nearbyButton = container.querySelector('button:not([aria-label*="add"])');
-        if (nearbyButton) {
-          createButton = nearbyButton;
-          sendLog('Found create button near textarea', 'info');
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+      const iconElement = btn.querySelector('i');
+      if (iconElement) {
+        const iconText = iconElement.textContent?.trim().toLowerCase() || '';
+        if (iconText === 'send' || iconText === 'check' || iconText === 'done' || iconText === 'play_arrow') {
+          createButton = btn;
+          sendLog(`Found create button via icon: "${iconText}"`, 'info');
+          break;
         }
       }
     }
   }
 
   if (!createButton) {
-    throw new Error('Create button not found');
+    throw new Error('Create button not found. Please check if you are on the Google Flow page.');
   }
 
   createButton.click();
