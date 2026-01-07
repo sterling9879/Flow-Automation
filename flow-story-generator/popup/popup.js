@@ -53,6 +53,7 @@ const elements = {
 
   // Log
   logContainer: document.getElementById('log-container'),
+  btnScanPage: document.getElementById('btn-scan-page'),
 
   // Settings
   settingTimeout: document.getElementById('setting-timeout'),
@@ -140,6 +141,7 @@ function setupEventListeners() {
   elements.btnStop.addEventListener('click', stopGeneration);
   elements.btnDownload.addEventListener('click', downloadAllImages);
   elements.btnClearLog.addEventListener('click', clearLog);
+  elements.btnScanPage.addEventListener('click', scanPage);
 
   // Settings changes
   elements.settingTimeout.addEventListener('change', saveState);
@@ -206,12 +208,7 @@ function updatePromptCount() {
  * Start the generation process
  */
 async function startGeneration() {
-  // Validate inputs
-  if (!state.characterImageData) {
-    log('Please upload a character image first', 'error');
-    return;
-  }
-
+  // Validate inputs - character image is now OPTIONAL
   const prompts = elements.promptsInput.value.trim().split('\n').filter(p => p.trim());
   if (prompts.length === 0) {
     log('Please enter at least one prompt', 'error');
@@ -461,6 +458,34 @@ function log(message, type = 'info') {
 function clearLog() {
   elements.logContainer.innerHTML = '';
   log('Log cleared', 'info');
+}
+
+/**
+ * Scan the page for available elements (for debugging)
+ */
+async function scanPage() {
+  log('Scanning page for elements...', 'info');
+
+  const response = await sendToContentScript({ action: 'SCAN_PAGE' });
+
+  if (response && response.results) {
+    const r = response.results;
+    log(`Scan complete: ${r.buttons.length} buttons, ${r.inputs.length} file inputs`, 'success');
+
+    // Log all buttons with aria-labels for debugging
+    r.buttons.forEach(b => {
+      if (b.ariaLabel) {
+        log(`  Button: "${b.ariaLabel}" (svg: ${b.hasSvg})`, 'debug');
+      }
+    });
+
+    // Log file inputs
+    r.inputs.forEach(inp => {
+      log(`  FileInput: accept="${inp.accept}" class="${inp.className}"`, 'debug');
+    });
+  } else {
+    log('Failed to scan page - make sure you are on Google Flow', 'error');
+  }
 }
 
 /**
